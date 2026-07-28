@@ -156,3 +156,4 @@ pherret list -r '/etc/.*' -f otlp \
 
 - Running as root gives full visibility across all processes. As a regular user, some processes will be skipped due to permission restrictions.
 - Skipped processes are only reported on stderr when `--show-skipped` is passed, and do not cause a non-zero exit.
+
