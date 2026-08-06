@@ -1,68 +1,71 @@
 package main
 
 import (
-	"encoding/json"
-	"flag"
 	"fmt"
 	"log"
 	"os"
 	"regexp"
-	"text/tabwriter"
 
+	"github.com/moonkev/pherret/internal/output"
 	"github.com/moonkev/pherret/internal/scan"
+	"github.com/spf13/cobra"
 )
 
-func main() {
-	log.SetFlags(0) // no timestamp prefix on error messages
-	log.SetPrefix("error: ")
-
-	regexStr := flag.String("regex", "", "Regex used to match open file paths (required)")
-	jsonOut := flag.Bool("json", false, "Emit JSON output")
-	flag.Parse()
-
-	if *regexStr == "" {
-		log.Println("-regex is required")
-		flag.Usage()
-		os.Exit(2)
-	}
-
-	re, err := regexp.Compile(*regexStr)
-	if err != nil {
-		log.Fatalf("invalid regex: %v", err)
-	}
-
-	scanner := scan.NewScanner()
-	matches, skipped, err := scanner.Scan(re)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	if *jsonOut {
-		enc := json.NewEncoder(os.Stdout)
-		enc.SetIndent("", "  ")
-		if err := enc.Encode(matches); err != nil {
-			log.Fatalf("failed to encode JSON: %v", err)
-		}
-	} else {
-		if err := printTable(matches); err != nil {
-			log.Fatalf("failed to write output: %v", err)
-		}
-	}
-
-	if skipped > 0 {
-		_, _ = fmt.Fprintf(os.Stderr, "note: skipped %d process(es) due to permission or read errors\n", skipped)
-	}
+var rootCmd = &cobra.Command{
+	Use:   "pherret",
+	Short: "pherret scans open file descriptors across processes.",
 }
 
-func printTable(matches []scan.Match) error {
-	w := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
-	if _, err := fmt.Fprintln(w, "UID\tUSER\tPID\tFD\tCWD\tEXE\tOPEN_PATH"); err != nil {
-		return err
+func newScanCmd() *cobra.Command {
+	var regexStr string
+	var format string
+
+	cmd := &cobra.Command{
+		Use:   "scan",
+		Short: "Scan open file descriptors across processes and filter by file path regex.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			re, err := regexp.Compile(regexStr)
+			if err != nil {
+				return fmt.Errorf("invalid regex: %w", err)
+			}
+
+			formatter, err := output.NewWithWriter(format, cmd.OutOrStdout())
+			if err != nil {
+				return err
+			}
+
+			scanner := scan.NewScanner()
+			matches, skipped, err := scanner.Scan(re)
+			if err != nil {
+				return err
+			}
+
+			if err := formatter.Format(matches); err != nil {
+				return err
+			}
+
+			if skipped > 0 {
+				_, _ = fmt.Fprintf(os.Stderr, "note: skipped %d process(es) due to permission or read errors\n", skipped)
+			}
+
+			return nil
+		},
 	}
-	for _, m := range matches {
-		if _, err := fmt.Fprintf(w, "%d\t%s\t%d\t%s\t%s\t%s\t%s\n", m.UID, m.User, m.PID, m.FD, m.CWD, m.Exe, m.OpenPath); err != nil {
-			return err
-		}
+
+	cmd.Flags().StringVarP(&regexStr, "regex", "r", "", "Regex to filter open file paths (required)")
+	cmd.Flags().StringVarP(&format, "format", "f", "table", "Output format (table, json, otlp)")
+	_ = cmd.MarkFlagRequired("regex")
+
+	return cmd
+}
+
+func main() {
+	log.SetFlags(0)
+	log.SetPrefix("error: ")
+
+	rootCmd.AddCommand(newScanCmd())
+
+	if err := rootCmd.Execute(); err != nil {
+		os.Exit(1)
 	}
-	return w.Flush()
 }
