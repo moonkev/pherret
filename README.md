@@ -1,46 +1,72 @@
 # pherret
 
-Scan open file descriptors across processes, filter by regex, and print process metadata.
+Scan open file descriptors across all running processes, filter by file path regex, and display process metadata.
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
-## What it prints per match
+## Output per match
 
-- process owner UID and username
-- process PID
-- process current working directory
-- process executable
-- matching file descriptor and open path
+| Field | Description |
+|---|---|
+| `UID` | Process owner numeric ID |
+| `USER` | Process owner username |
+| `PID` | Process ID |
+| `CWD` | Process current working directory |
+| `EXE` | Process executable path |
+| `FD` | File descriptor number |
+| `PATH` | Matched open file path |
 
-## Run
+## Usage
 
-> **Note:** Always use `go run .` (not `go run main.go`) — the implementation is split across multiple files in the package.
+```
+pherret scan -r <regex> [flags]
 
-```sh
-go run . -regex '/var/log/.*'
+Flags:
+  -r, --regex string    Regex to filter open file paths (required)
+  -f, --format string   Output format: table, json (default "table")
+  -h, --help            help for scan
 ```
 
-JSON output:
+### Examples
 
 ```sh
-go run . -regex '/home/.*/\\.ssh/.*' -json
+# Find all open files under /var/log
+pherret scan -r '/var/log/.*'
+
+# Find SSH-related open files, output as JSON
+pherret scan -r '/\.ssh/.*' -f json
+
+# Find open files in /tmp belonging to any process
+pherret scan -r '/tmp/.*'
 ```
 
-## Backend by OS
+## Installation
 
-- Linux: scans `/proc/<pid>/fd` and reads process metadata from `/proc/<pid>/status`, `/proc/<pid>/cwd`, and `/proc/<pid>/exe`.
-- macOS: uses native Apple `libproc` APIs (`proc_pidinfo`, `proc_pidpath`) via CGo — no external tools required.
-- Other OSes: currently unsupported, but the scanner is now split so additional backends can be added cleanly.
+```sh
+git clone https://github.com/moonkev/pherret
+cd pherret
+go build -o pherret .
+```
 
-Implementation is split into separate files with Go build tags:
+## Backends
 
-- `scanner_linux.go`
-- `scanner_darwin.go`
-- `scanner_unsupported.go`
-- `scanner_types.go`
+pherret uses OS-native APIs — no external tools required.
+
+| OS | Implementation |
+|---|---|
+| Linux | Reads `/proc/<pid>/fd`, `/proc/<pid>/status`, `/proc/<pid>/cwd`, `/proc/<pid>/exe` |
+| macOS | Calls Apple `libproc` APIs (`proc_pidinfo`, `proc_pidpath`) via CGo |
+| Other | Unsupported (additional backends can be added under `internal/scan/`) |
+
+### macOS build requirement
+
+CGo is used for the macOS backend. The standard Xcode Command Line Tools are required to build:
+
+```sh
+xcode-select --install
+```
 
 ## Notes
 
-- As non-root, some processes may be skipped or partially visible due to permissions.
-- macOS backend uses CGo and requires the standard Xcode Command Line Tools (`xcode-select --install`) to build — no other dependencies needed at runtime.
-
+- Running as root gives full visibility across all processes. As a regular user, some processes will be skipped due to permission restrictions.
+- Skipped processes are reported as a note on stderr and do not cause a non-zero exit.

@@ -61,7 +61,7 @@ func TestScanCmd_ValidScan_TableOutput(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(stdout, "UID") || !strings.Contains(stdout, "OPEN_PATH") {
+	if !strings.Contains(stdout, "UID") || !strings.Contains(stdout, "PATH") {
 		t.Errorf("expected table header in output, got:\n%s", stdout)
 	}
 	if !strings.Contains(stdout, "/dev/null") {
@@ -88,7 +88,7 @@ func TestScanCmd_DefaultFormat_IsTable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(stdout, "OPEN_PATH") {
+	if !strings.Contains(stdout, "PATH") {
 		t.Errorf("default format should be table, got:\n%s", stdout)
 	}
 }

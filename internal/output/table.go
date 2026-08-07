@@ -15,12 +15,12 @@ type TableFormatter struct {
 
 func (f *TableFormatter) Format(matches []scan.Match) error {
 	w := tabwriter.NewWriter(f.w, 0, 4, 2, ' ', 0)
-	if _, err := fmt.Fprintln(w, "UID\tUSER\tPID\tFD\tCWD\tEXE\tOPEN_PATH"); err != nil {
+	if _, err := fmt.Fprintln(w, "UID\tUSER\tPID\tFD\tCWD\tEXE\tPATH"); err != nil {
 		return err
 	}
 	for _, m := range matches {
 		if _, err := fmt.Fprintf(w, "%d\t%s\t%d\t%s\t%s\t%s\t%s\n",
-			m.UID, m.User, m.PID, m.FD, m.CWD, m.Exe, m.OpenPath); err != nil {
+			m.UID, m.User, m.PID, m.FD, m.CWD, m.Exe, m.Path); err != nil {
 			return err
 		}
 	}

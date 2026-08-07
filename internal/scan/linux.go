@@ -65,13 +65,13 @@ func (s *linuxProcScanner) Scan(re *regexp.Regexp) ([]Match, int, error) {
 			}
 
 			out = append(out, Match{
-				UID:      uid,
-				User:     username,
-				PID:      pid,
-				CWD:      cwd,
-				Exe:      exe,
-				FD:       fdEntry.Name(),
-				OpenPath: target,
+				UID:  uid,
+				User: username,
+				PID:  pid,
+				CWD:  cwd,
+				Exe:  exe,
+				FD:   fdEntry.Name(),
+				Path: target,
 			})
 		}
 	}

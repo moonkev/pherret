@@ -8,13 +8,13 @@ import (
 )
 
 type Match struct {
-	UID      uint32 `json:"uid"`
-	User     string `json:"user"`
-	PID      int    `json:"pid"`
-	CWD      string `json:"cwd"`
-	Exe      string `json:"exe"`
-	FD       string `json:"fd"`
-	OpenPath string `json:"open_path"`
+	UID  uint32 `json:"uid"`
+	User string `json:"user"`
+	PID  int    `json:"pid"`
+	CWD  string `json:"cwd"`
+	Exe  string `json:"exe"`
+	FD   string `json:"fd"`
+	Path string `json:"path"`
 }
 
 type Scanner interface {

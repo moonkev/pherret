@@ -99,13 +99,13 @@ func (s *darwinNativeScanner) Scan(re *regexp.Regexp) ([]Match, int, error) {
 
 		for _, h := range hits {
 			out = append(out, Match{
-				UID:      uid,
-				User:     username,
-				PID:      pid,
-				CWD:      cwd,
-				Exe:      exe,
-				FD:       h.fd,
-				OpenPath: h.path,
+				UID:  uid,
+				User: username,
+				PID:  pid,
+				CWD:  cwd,
+				Exe:  exe,
+				FD:   h.fd,
+				Path: h.path,
 			})
 		}
 	}

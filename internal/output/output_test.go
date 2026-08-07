@@ -15,12 +15,12 @@ var (
 	emptyMatches = []scan.Match{}
 
 	singleMatch = []scan.Match{
-		{UID: 1000, User: "alice", PID: 42, FD: "3", CWD: "/home/alice", Exe: "/usr/bin/cat", OpenPath: "/tmp/foo.txt"},
+		{UID: 1000, User: "alice", PID: 42, FD: "3", CWD: "/home/alice", Exe: "/usr/bin/cat", Path: "/tmp/foo.txt"},
 	}
 
 	multiMatches = []scan.Match{
-		{UID: 1000, User: "alice", PID: 42, FD: "3", CWD: "/home/alice", Exe: "/usr/bin/cat", OpenPath: "/tmp/foo.txt"},
-		{UID: 0, User: "root", PID: 1, FD: "10", CWD: "/", Exe: "/sbin/init", OpenPath: "/var/log/syslog"},
+		{UID: 1000, User: "alice", PID: 42, FD: "3", CWD: "/home/alice", Exe: "/usr/bin/cat", Path: "/tmp/foo.txt"},
+		{UID: 0, User: "root", PID: 1, FD: "10", CWD: "/", Exe: "/sbin/init", Path: "/var/log/syslog"},
 	}
 )
 
@@ -57,7 +57,7 @@ func TestTableFormatter_Header(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	got := buf.String()
-	for _, col := range []string{"UID", "USER", "PID", "FD", "CWD", "EXE", "OPEN_PATH"} {
+	for _, col := range []string{"UID", "USER", "PID", "FD", "CWD", "EXE", "PATH"} {
 		if !strings.Contains(got, col) {
 			t.Errorf("table header missing column %q; output:\n%s", col, got)
 		}
@@ -72,7 +72,7 @@ func TestTableFormatter_SingleMatch(t *testing.T) {
 	}
 	got := buf.String()
 	m := singleMatch[0]
-	for _, want := range []string{m.User, m.CWD, m.Exe, m.OpenPath, m.FD} {
+	for _, want := range []string{m.User, m.CWD, m.Exe, m.Path, m.FD} {
 		if !strings.Contains(got, want) {
 			t.Errorf("table output missing %q; output:\n%s", want, got)
 		}
@@ -127,7 +127,7 @@ func TestJSONFormatter_SingleMatch(t *testing.T) {
 	m := got[0]
 	want := singleMatch[0]
 	if m.UID != want.UID || m.User != want.User || m.PID != want.PID ||
-		m.FD != want.FD || m.CWD != want.CWD || m.Exe != want.Exe || m.OpenPath != want.OpenPath {
+		m.FD != want.FD || m.CWD != want.CWD || m.Exe != want.Exe || m.Path != want.Path {
 		t.Errorf("match mismatch:\nwant %+v\ngot  %+v", want, m)
 	}
 }
@@ -171,4 +171,3 @@ func TestOTLPFormatter_ReturnsNotSupportedError(t *testing.T) {
 		t.Errorf("unexpected error message: %v", err)
 	}
 }
-
