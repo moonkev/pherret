@@ -22,8 +22,8 @@ static int list_fds(int pid, struct proc_fdinfo *buf, int cap) {
 static int fd_vnode_path(int pid, int fd, char *out, int outlen) {
     struct vnode_fdinfowithpath info;
     memset(&info, 0, sizeof(info));
-    int r = proc_pidinfo(pid, PROC_PIDFDVNODEPATHINFO, (uint64_t)fd,
-                         &info, PROC_PIDFDVNODEPATHINFO_SIZE);
+	int r = proc_pidfdinfo(pid, fd, PROC_PIDFDVNODEPATHINFO,
+						   &info, PROC_PIDFDVNODEPATHINFO_SIZE);
     if (r <= 0) return -1;
     strlcpy(out, info.pvip.vip_path, outlen);
     return 0;
@@ -63,6 +63,35 @@ import (
 
 	"golang.org/x/sys/unix"
 )
+
+func sanitizeDarwinPath(path string) (string, bool) {
+	if path == "" || path[0] != '/' {
+		return "", false
+	}
+
+	for i := 0; i < len(path); i++ {
+		b := path[i]
+		if b < 0x20 || b == 0x7f {
+			return "", false
+		}
+	}
+
+	// Kernel-reported paths should either be root or include another separator.
+	if len(path) > 1 && path[1] != '.' && path[1] != '/' {
+		hasMoreSep := false
+		for i := 1; i < len(path); i++ {
+			if path[i] == '/' {
+				hasMoreSep = true
+				break
+			}
+		}
+		if !hasMoreSep {
+			return "", false
+		}
+	}
+
+	return path, true
+}
 
 type darwinNativeScanner struct{}
 
@@ -147,12 +176,13 @@ func listDarwinVnodeFDs(pid int, re *regexp.Regexp) ([]fdHit, error) {
 			continue
 		}
 
+		clear(pathBuf)
 		if C.fd_vnode_path(C.int(pid), C.int(fi.proc_fd), &pathBuf[0], C.int(len(pathBuf))) != 0 {
 			continue
 		}
 
-		path := C.GoString(&pathBuf[0])
-		if path == "" || !re.MatchString(path) {
+		path, ok := sanitizeDarwinPath(C.GoString(&pathBuf[0]))
+		if !ok || !re.MatchString(path) {
 			continue
 		}
 
