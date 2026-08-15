@@ -60,6 +60,12 @@ pherret watch -r '/tmp/.*' -i 1s
 ## Installation
 
 ```sh
+go install github.com/moonkev/pherret@latest
+```
+
+Or clone and build manually:
+
+```sh
 git clone https://github.com/moonkev/pherret
 cd pherret
 go build -o pherret .
