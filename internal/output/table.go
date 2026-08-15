@@ -13,10 +13,12 @@ type TableFormatter struct {
 	w io.Writer
 }
 
-func (f *TableFormatter) Format(matches []scan.Match) error {
+func (f *TableFormatter) Format(matches []scan.Match, firstScan bool) error {
 	w := tabwriter.NewWriter(f.w, 0, 4, 2, ' ', 0)
-	if _, err := fmt.Fprintln(w, "UID\tUSER\tPID\tFD\tCWD\tEXE\tPATH"); err != nil {
-		return err
+	if firstScan {
+		if _, err := fmt.Fprintln(w, "UID\tUSER\tPID\tFD\tCWD\tEXE\tPATH"); err != nil {
+			return err
+		}
 	}
 	for _, m := range matches {
 		if _, err := fmt.Fprintf(w, "%d\t%s\t%d\t%s\t%s\t%s\t%s\n",

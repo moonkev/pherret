@@ -30,4 +30,3 @@ func TestSanitizeDarwinPath(t *testing.T) {
 		})
 	}
 }
-

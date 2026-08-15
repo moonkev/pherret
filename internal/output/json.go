@@ -13,7 +13,7 @@ type JSONFormatter struct {
 	w io.Writer
 }
 
-func (f *JSONFormatter) Format(matches []scan.Match) error {
+func (f *JSONFormatter) Format(matches []scan.Match, firstScan bool) error {
 	enc := json.NewEncoder(f.w)
 	enc.SetIndent("", "  ")
 	if err := enc.Encode(matches); err != nil {

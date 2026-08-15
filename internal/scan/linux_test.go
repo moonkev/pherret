@@ -14,4 +14,3 @@ func TestParseUIDFromStatus(t *testing.T) {
 		t.Fatalf("expected uid 1000, got %d", uid)
 	}
 }
-

@@ -2,7 +2,6 @@ package output
 
 import (
 	"fmt"
-	"io"
 	"os"
 
 	"github.com/moonkev/pherret/internal/scan"
@@ -10,25 +9,22 @@ import (
 
 // Formatter writes a slice of matches to some output destination.
 type Formatter interface {
-	Format(matches []scan.Match) error
+	Format(matches []scan.Match, firstScan bool) error
 }
 
-// New returns the Formatter for the given format name, writing to os.Stdout.
+// New returns the Formatter for the given format name.
+// Stream-based formatters write to os.Stdout. cfg carries format-specific
+// settings (e.g. cfg.OTLP); fields for formats other than the one selected
+// are ignored.
 // Returns an error listing valid choices if the name is unknown.
-func New(format string) (Formatter, error) {
-	return NewWithWriter(format, os.Stdout)
-}
-
-// NewWithWriter returns the Formatter for the given format name, writing to w.
-// This is primarily useful for testing.
-func NewWithWriter(format string, w io.Writer) (Formatter, error) {
+func New(format string, cfg Config) (Formatter, error) {
 	switch format {
 	case "table":
-		return &TableFormatter{w: w}, nil
+		return &TableFormatter{w: os.Stdout}, nil
 	case "json":
-		return &JSONFormatter{w: w}, nil
+		return &JSONFormatter{w: os.Stdout}, nil
 	case "otlp":
-		return &OTLPFormatter{w: w}, nil
+		return &OTLPFormatter{cfg: cfg.OTLP}, nil
 	default:
 		return nil, fmt.Errorf("unknown output format %q: valid choices are: table, json, otlp", format)
 	}
