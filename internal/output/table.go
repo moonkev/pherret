@@ -1,11 +1,12 @@
 package output
 
 import (
-	"fmt"
 	"io"
-	"text/tabwriter"
 
+	"github.com/fatih/color"
 	"github.com/moonkev/pherret/internal/scan"
+	"github.com/olekukonko/tablewriter"
+	"github.com/olekukonko/tablewriter/renderer"
 )
 
 // TableFormatter renders matches as a human-readable aligned table.
@@ -13,18 +14,26 @@ type TableFormatter struct {
 	w io.Writer
 }
 
-func (f *TableFormatter) Format(matches []scan.Match, firstScan bool) error {
-	w := tabwriter.NewWriter(f.w, 0, 4, 2, ' ', 0)
+func (f *TableFormatter) Format(matches []scan.Match, firstScan bool) (err error) {
+	colorCfg := renderer.ColorizedConfig{
+		Header: renderer.Tint{
+			FG: renderer.Colors{color.FgGreen, color.Bold},
+		},
+	}
+	table := tablewriter.NewTable(f.w, tablewriter.WithRenderer(renderer.NewColorized(colorCfg)))
+	defer func(table *tablewriter.Table) {
+		err = table.Close()
+	}(table)
+
 	if firstScan {
-		if _, err := fmt.Fprintln(w, "UID\tUSER\tPID\tFD\tCWD\tEXE\tPATH"); err != nil {
-			return err
-		}
+		table.Header("UID", "USER", "PID", "FD", "CWD", "EXE", "PATH")
 	}
-	for _, m := range matches {
-		if _, err := fmt.Fprintf(w, "%d\t%s\t%d\t%s\t%s\t%s\t%s\n",
-			m.UID, m.User, m.PID, m.FD, m.CWD, m.Exe, m.Path); err != nil {
-			return err
-		}
+	tableData := make([][]any, len(matches))
+	for i, m := range matches {
+		tableData[i] = []any{m.UID, m.User, m.PID, m.FD, m.CWD, m.Exe, m.Path}
 	}
-	return w.Flush()
+	if err = table.Bulk(tableData); err != nil {
+		return err
+	}
+	return table.Render()
 }
