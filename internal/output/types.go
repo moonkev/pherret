@@ -12,7 +12,13 @@ import (
 // parameter list.
 type Config struct {
 	// OTLP holds settings used only when the "otlp" format is selected.
-	OTLP OTLPConfig
+	// It is a pointer so that Config can be constructed before flag parsing
+	// occurs (e.g. via cobra) and still reflect the values set by flags at
+	// the time New is called.
+	OTLP *OTLPConfig
+	// CSV holds settings used only when the "csv" format is selected.
+	// It is a pointer for the same reason as OTLP above.
+	CSV *CsvConfig
 }
 
 // OTLPConfig holds all user-configurable settings for the OTLP log exporter.
@@ -25,7 +31,7 @@ type OTLPConfig struct {
 	// URLPath overrides the request path when Protocol is "http".
 	URLPath string
 	// Headers are additional request headers/metadata sent with every export.
-	Headers map[string]string
+	Headers []string
 	// TLS enables a TLS (or mTLS) connection to Endpoint. When false, the
 	// connection is made in plaintext.
 	TLS bool
@@ -41,10 +47,17 @@ type OTLPConfig struct {
 	ClientKeyFile  string
 }
 
+type CsvConfig struct {
+	// IncludeHeader determines whether to include a header row in the CSV output.
+	IncludeHeader bool
+	// OutputFilePath specifies the path to the output CSV file. If empty, output will be written to stdout.
+	FilePath string
+}
+
 // Validate checks the configuration for internal consistency.
 func (c OTLPConfig) Validate() error {
 	if c.Endpoint == "" {
-		return fmt.Errorf("otlp: endpoint is required")
+		return fmt.Errorf("otlp: --otlp-endpoint is required")
 	}
 
 	switch c.Protocol {
@@ -66,19 +79,25 @@ func (c OTLPConfig) Validate() error {
 	return nil
 }
 
+// ParsedOTLPHeaders parses a list of "Key=Value" strings into a header map.
+func (c OTLPConfig) ParsedOTLPHeaders() (map[string]string, error) {
+	return ParseOTLPHeaders(c.Headers)
+}
+
 // ParseOTLPHeaders parses a list of "Key=Value" strings into a header map.
-func ParseOTLPHeaders(pairs []string) (map[string]string, error) {
-	if len(pairs) == 0 {
+// Returns a nil map if headers is empty.
+func ParseOTLPHeaders(headers []string) (map[string]string, error) {
+	if len(headers) == 0 {
 		return nil, nil
 	}
 
-	headers := make(map[string]string, len(pairs))
-	for _, pair := range pairs {
+	parsed := make(map[string]string, len(headers))
+	for _, pair := range headers {
 		key, value, ok := strings.Cut(pair, "=")
 		if !ok || key == "" {
 			return nil, fmt.Errorf("invalid otlp header %q: expected format Key=Value", pair)
 		}
-		headers[key] = value
+		parsed[key] = value
 	}
-	return headers, nil
+	return parsed, nil
 }

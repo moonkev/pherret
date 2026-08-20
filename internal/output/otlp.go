@@ -61,7 +61,11 @@ func newHTTPExporter(ctx context.Context, cfg OTLPConfig) (sdklog.Exporter, erro
 	}
 
 	if len(cfg.Headers) > 0 {
-		opts = append(opts, otlploghttp.WithHeaders(cfg.Headers))
+		headers, err := cfg.ParsedOTLPHeaders()
+		if err != nil {
+			return nil, err
+		}
+		opts = append(opts, otlploghttp.WithHeaders(headers))
 	}
 
 	if cfg.TLS {
@@ -83,7 +87,11 @@ func newGRPCExporter(ctx context.Context, cfg OTLPConfig) (sdklog.Exporter, erro
 	}
 
 	if len(cfg.Headers) > 0 {
-		opts = append(opts, otlploggrpc.WithHeaders(cfg.Headers))
+		headers, err := cfg.ParsedOTLPHeaders()
+		if err != nil {
+			return nil, err
+		}
+		opts = append(opts, otlploggrpc.WithHeaders(headers))
 	}
 
 	if cfg.TLS {
@@ -132,7 +140,7 @@ func initLogger(ctx context.Context, cfg OTLPConfig) (*sdklog.LoggerProvider, er
 	return provider, nil
 }
 
-func (f *OTLPFormatter) Format(matches []scan.Match, firstScan bool) (err error) {
+func (f *OTLPFormatter) Format(matches []scan.Match) (err error) {
 	if err := f.cfg.Validate(); err != nil {
 		return err
 	}

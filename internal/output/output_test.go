@@ -9,9 +9,8 @@ import (
 	"github.com/moonkev/pherret/internal/scan"
 )
 
-// fixtures shared across tests
 var (
-	emptyMatches = []scan.Match{}
+	emptyMatches []scan.Match
 
 	singleMatch = []scan.Match{
 		{UID: 1000, User: "alice", PID: 42, FD: "3", CWD: "/home/alice", Exe: "/usr/bin/cat", Path: "/tmp/foo.txt"},
@@ -26,8 +25,8 @@ var (
 // --- factory ---
 
 func TestNew_ValidFormats(t *testing.T) {
-	for _, name := range []string{"table", "json", "otlp"} {
-		f, err := New(name, Config{})
+	for _, name := range []string{"table", "csv", "json"} {
+		f, err := New(name, &Config{})
 		if err != nil {
 			t.Errorf("New(%q) unexpected error: %v", name, err)
 		}
@@ -37,12 +36,32 @@ func TestNew_ValidFormats(t *testing.T) {
 	}
 }
 
+func TestNew_OTLP_ValidConfig(t *testing.T) {
+	f, err := New("otlp", &Config{OTLP: &OTLPConfig{Endpoint: "localhost:4317"}})
+	if err != nil {
+		t.Errorf("New(\"otlp\") unexpected error: %v", err)
+	}
+	if f == nil {
+		t.Errorf("New(\"otlp\") returned nil formatter")
+	}
+}
+
+func TestNew_OTLP_MissingEndpoint(t *testing.T) {
+	_, err := New("otlp", &Config{})
+	if err == nil {
+		t.Fatal("expected error when otlp endpoint is missing, got nil")
+	}
+	if !strings.Contains(err.Error(), "endpoint") {
+		t.Errorf("error should mention endpoint, got: %v", err)
+	}
+}
+
 func TestNew_UnknownFormat(t *testing.T) {
-	_, err := New("csv", Config{})
+	_, err := New("yaml", &Config{})
 	if err == nil {
 		t.Fatal("expected error for unknown format, got nil")
 	}
-	if !strings.Contains(err.Error(), "csv") {
+	if !strings.Contains(err.Error(), "yaml") {
 		t.Errorf("error message should mention the bad format name, got: %v", err)
 	}
 }
@@ -52,7 +71,7 @@ func TestNew_UnknownFormat(t *testing.T) {
 func TestTableFormatter_Header(t *testing.T) {
 	var buf bytes.Buffer
 	f := &TableFormatter{w: &buf}
-	if err := f.Format(emptyMatches, true); err != nil {
+	if err := f.Format(emptyMatches); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	got := buf.String()
@@ -63,25 +82,10 @@ func TestTableFormatter_Header(t *testing.T) {
 	}
 }
 
-func TestTableFormatter_HeaderOmittedWhenNotFirstScan(t *testing.T) {
-	var buf bytes.Buffer
-	f := &TableFormatter{w: &buf}
-	if err := f.Format(singleMatch, false); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	got := buf.String()
-	if strings.Contains(got, "UID") {
-		t.Errorf("expected no header when firstScan is false; output:\n%s", got)
-	}
-	if !strings.Contains(got, singleMatch[0].Path) {
-		t.Errorf("expected match data in output; output:\n%s", got)
-	}
-}
-
 func TestTableFormatter_SingleMatch(t *testing.T) {
 	var buf bytes.Buffer
 	f := &TableFormatter{w: &buf}
-	if err := f.Format(singleMatch, true); err != nil {
+	if err := f.Format(singleMatch); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	got := buf.String()
@@ -96,14 +100,14 @@ func TestTableFormatter_SingleMatch(t *testing.T) {
 func TestTableFormatter_MultipleMatches(t *testing.T) {
 	var buf bytes.Buffer
 	f := &TableFormatter{w: &buf}
-	if err := f.Format(multiMatches, true); err != nil {
+	if err := f.Format(multiMatches); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	got := buf.String()
-	lines := strings.Split(strings.TrimSpace(got), "\n")
-	if len(lines) != 1+len(multiMatches) {
-		t.Errorf("expected %d lines (header + %d matches), got %d;\noutput:\n%s",
-			1+len(multiMatches), len(multiMatches), len(lines), got)
+	for _, m := range multiMatches {
+		if !strings.Contains(got, m.Path) {
+			t.Errorf("expected match %q in output;\noutput:\n%s", m.Path, got)
+		}
 	}
 }
 
@@ -112,7 +116,7 @@ func TestTableFormatter_MultipleMatches(t *testing.T) {
 func TestJSONFormatter_EmptyMatches(t *testing.T) {
 	var buf bytes.Buffer
 	f := &JSONFormatter{w: &buf}
-	if err := f.Format(emptyMatches, true); err != nil {
+	if err := f.Format(emptyMatches); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	var got []scan.Match
@@ -127,7 +131,7 @@ func TestJSONFormatter_EmptyMatches(t *testing.T) {
 func TestJSONFormatter_SingleMatch(t *testing.T) {
 	var buf bytes.Buffer
 	f := &JSONFormatter{w: &buf}
-	if err := f.Format(singleMatch, true); err != nil {
+	if err := f.Format(singleMatch); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	var got []scan.Match
@@ -148,7 +152,7 @@ func TestJSONFormatter_SingleMatch(t *testing.T) {
 func TestJSONFormatter_MultipleMatches(t *testing.T) {
 	var buf bytes.Buffer
 	f := &JSONFormatter{w: &buf}
-	if err := f.Format(multiMatches, true); err != nil {
+	if err := f.Format(multiMatches); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	var got []scan.Match
@@ -163,7 +167,7 @@ func TestJSONFormatter_MultipleMatches(t *testing.T) {
 func TestJSONFormatter_IsIndented(t *testing.T) {
 	var buf bytes.Buffer
 	f := &JSONFormatter{w: &buf}
-	if err := f.Format(singleMatch, true); err != nil {
+	if err := f.Format(singleMatch); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if !strings.Contains(buf.String(), "\n  ") {
@@ -171,28 +175,11 @@ func TestJSONFormatter_IsIndented(t *testing.T) {
 	}
 }
 
-func TestJSONFormatter_FirstScanDoesNotAffectOutput(t *testing.T) {
-	var bufFirst, bufLater bytes.Buffer
-	fFirst := &JSONFormatter{w: &bufFirst}
-	fLater := &JSONFormatter{w: &bufLater}
-
-	if err := fFirst.Format(singleMatch, true); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if err := fLater.Format(singleMatch, false); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if bufFirst.String() != bufLater.String() {
-		t.Errorf("expected JSON output to be identical regardless of firstScan; first:\n%s\nlater:\n%s",
-			bufFirst.String(), bufLater.String())
-	}
-}
-
 // --- OTLPFormatter ---
 
 func TestOTLPFormatter_MissingEndpoint(t *testing.T) {
 	f := &OTLPFormatter{}
-	err := f.Format(singleMatch, true)
+	err := f.Format(singleMatch)
 	if err == nil {
 		t.Fatal("expected error from OTLP formatter with no endpoint configured, got nil")
 	}

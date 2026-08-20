@@ -6,8 +6,11 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -65,11 +68,11 @@ func TestHashMatch_DiffersForDifferentMatch(t *testing.T) {
 	}
 }
 
-// --- otlpFlagSet / newFormatter ---
+// --- OTLP flags / output.New ---
 
-func TestOtlpFlagSet_ToConfig(t *testing.T) {
+func TestOTLPFlags_ParsedHeaders(t *testing.T) {
 	cmd := &cobra.Command{}
-	f := addOTLPFlags(cmd)
+	cfg := addOTLPFlags(cmd)
 	if err := cmd.Flags().Parse([]string{
 		"--otlp-endpoint", "localhost:4317",
 		"--otlp-protocol", "grpc",
@@ -79,49 +82,49 @@ func TestOtlpFlagSet_ToConfig(t *testing.T) {
 		t.Fatalf("unexpected error parsing flags: %v", err)
 	}
 
-	cfg, err := f.toConfig()
+	if cfg.Endpoint != "localhost:4317" {
+		t.Errorf("expected endpoint to be set, got %q", cfg.Endpoint)
+	}
+	if !cfg.TLS {
+		t.Errorf("expected TLS to be true")
+	}
+	headers, err := cfg.ParsedOTLPHeaders()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if cfg.OTLP.Endpoint != "localhost:4317" {
-		t.Errorf("expected endpoint to be set, got %q", cfg.OTLP.Endpoint)
-	}
-	if !cfg.OTLP.TLS {
-		t.Errorf("expected TLS to be true")
-	}
-	if cfg.OTLP.Headers["Authorization"] != "Bearer abc" {
-		t.Errorf("expected header to be parsed, got %v", cfg.OTLP.Headers)
+	if headers["Authorization"] != "Bearer abc" {
+		t.Errorf("expected header to be parsed, got %v", headers)
 	}
 }
 
-func TestOtlpFlagSet_ToConfig_InvalidHeader(t *testing.T) {
+func TestOTLPFlags_InvalidHeader(t *testing.T) {
 	cmd := &cobra.Command{}
-	f := addOTLPFlags(cmd)
+	cfg := addOTLPFlags(cmd)
 	if err := cmd.Flags().Parse([]string{"--otlp-header", "no-equals-sign"}); err != nil {
 		t.Fatalf("unexpected error parsing flags: %v", err)
 	}
 
-	if _, err := f.toConfig(); err == nil {
+	if _, err := cfg.ParsedOTLPHeaders(); err == nil {
 		t.Fatal("expected error for malformed header, got nil")
 	}
 }
 
-func TestNewFormatter_OTLPRequiresEndpoint(t *testing.T) {
+func TestOutputNew_OTLPRequiresEndpoint(t *testing.T) {
 	cmd := &cobra.Command{}
-	f := addOTLPFlags(cmd)
+	otlpCfg := addOTLPFlags(cmd)
 
-	if _, err := newFormatter("otlp", f); err == nil {
+	if _, err := output.New("otlp", &output.Config{OTLP: otlpCfg}); err == nil {
 		t.Fatal("expected error when --otlp-endpoint is missing, got nil")
 	} else if !strings.Contains(err.Error(), "otlp-endpoint") {
 		t.Errorf("error should mention otlp-endpoint, got: %v", err)
 	}
 }
 
-func TestNewFormatter_TableDoesNotRequireOTLPFlags(t *testing.T) {
+func TestOutputNew_TableDoesNotRequireOTLPFlags(t *testing.T) {
 	cmd := &cobra.Command{}
-	f := addOTLPFlags(cmd)
+	otlpCfg := addOTLPFlags(cmd)
 
-	formatter, err := newFormatter("table", f)
+	formatter, err := output.New("table", &output.Config{OTLP: otlpCfg})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -212,8 +215,34 @@ func TestListCmd_DefaultRegex_IsMatchAll(t *testing.T) {
 
 // --- watch command ---
 
+// newFakeOTLPCollector starts a lightweight HTTP server that accepts any
+// OTLP/HTTP log export request, returns 200 OK, and increments a counter
+// for each request received. It lets tests exercise real export behavior
+// for the otlp format (the only format watch supports) without depending
+// on an actual collector.
+func newFakeOTLPCollector(t *testing.T) (endpoint string, hits *int32) {
+	t.Helper()
+	hits = new(int32)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(hits, 1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(srv.Close)
+	return strings.TrimPrefix(srv.URL, "http://"), hits
+}
+
+func TestWatchCmd_RequiresOTLPFormat(t *testing.T) {
+	_, err := execCmd("watch", "--regex", "/tmp/.*", "--format", "table")
+	if err == nil {
+		t.Fatal("expected error when format is not otlp, got nil")
+	}
+	if !strings.Contains(err.Error(), "otlp") {
+		t.Errorf("error should mention otlp, got: %v", err)
+	}
+}
+
 func TestWatchCmd_InvalidRegex(t *testing.T) {
-	_, err := execCmd("watch", "--regex", "[invalid(")
+	_, err := execCmd("watch", "--format", "otlp", "--otlp-endpoint", "localhost:4317", "--regex", "[invalid(")
 	if err == nil {
 		t.Fatal("expected error for invalid regex, got nil")
 	}
@@ -222,10 +251,10 @@ func TestWatchCmd_InvalidRegex(t *testing.T) {
 	}
 }
 
-func TestWatchCmd_InvalidFormat(t *testing.T) {
+func TestWatchCmd_NonOTLPFormatRejected(t *testing.T) {
 	_, err := execCmd("watch", "--regex", "/tmp/.*", "--format", "nope")
 	if err == nil {
-		t.Fatal("expected error for unknown format, got nil")
+		t.Fatal("expected error for non-otlp format, got nil")
 	}
 	if !strings.Contains(err.Error(), "nope") {
 		t.Errorf("error should mention the bad format name, got: %v", err)
@@ -233,33 +262,37 @@ func TestWatchCmd_InvalidFormat(t *testing.T) {
 }
 
 func TestWatchCmd_StopsOnContextCancellation(t *testing.T) {
+	endpoint, hits := newFakeOTLPCollector(t)
+
 	ctx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
 	defer cancel()
 
-	stdout, err := execCmdCtx(ctx, "watch", "--regex", "/dev/null", "--interval", "20ms")
+	_, err := execCmdCtx(ctx, "watch", "--regex", "/dev/null", "--interval", "20ms",
+		"--format", "otlp", "--otlp-protocol", "http", "--otlp-endpoint", endpoint)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(stdout, "/dev/null") {
-		t.Errorf("expected /dev/null in output, got:\n%s", stdout)
+	if atomic.LoadInt32(hits) == 0 {
+		t.Error("expected at least one export to reach the fake OTLP collector")
 	}
 }
 
 func TestWatchCmd_DedupesRepeatedMatches(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
+	endpoint, hits := newFakeOTLPCollector(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
 	defer cancel()
 
-	stdout, err := execCmdCtx(ctx, "watch", "--regex", "/dev/null", "--interval", "20ms", "--format", "json")
+	_, err := execCmdCtx(ctx, "watch", "--regex", "/dev/null", "--interval", "10ms",
+		"--format", "otlp", "--otlp-protocol", "http", "--otlp-endpoint", endpoint)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	// Multiple scans occur within the timeout window, but each unique open
-	// file descriptor entry should only be printed once thanks to the
-	// hash-based dedup cache.
-	if strings.Count(stdout, "/dev/null") > strings.Count(stdout, "\"pid\"") {
-		t.Errorf("expected each /dev/null match to be deduped across scans, got:\n%s", stdout)
-	}
-	if !strings.Contains(stdout, "/dev/null") {
-		t.Errorf("expected at least one /dev/null match, got:\n%s", stdout)
+	// Many polls occur within the timeout window (10ms interval), but each
+	// unique open file descriptor entry should only be exported once thanks
+	// to the hash-based dedup cache, so the collector should see very few
+	// requests despite the many scans performed.
+	if got := atomic.LoadInt32(hits); got > 2 {
+		t.Errorf("expected dedup to limit exports to at most 2 requests, got %d", got)
 	}
 }

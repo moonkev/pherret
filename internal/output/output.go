@@ -2,14 +2,13 @@ package output
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/moonkev/pherret/internal/scan"
 )
 
 // Formatter writes a slice of matches to some output destination.
 type Formatter interface {
-	Format(matches []scan.Match, firstScan bool) error
+	Format(matches []scan.Match) error
 }
 
 // New returns the Formatter for the given format name.
@@ -17,15 +16,32 @@ type Formatter interface {
 // settings (e.g. cfg.OTLP); fields for formats other than the one selected
 // are ignored.
 // Returns an error listing valid choices if the name is unknown.
-func New(format string, cfg Config) (Formatter, error) {
+func New(format string, cfg *Config) (Formatter, error) {
+	if cfg == nil {
+		cfg = &Config{}
+	}
+
 	switch format {
 	case "table":
-		return &TableFormatter{w: os.Stdout}, nil
+		return &TableFormatter{}, nil
+	case "csv":
+		csvCfg := cfg.CSV
+		if csvCfg == nil {
+			csvCfg = &CsvConfig{}
+		}
+		return &CsvFormatter{cfg: *csvCfg}, nil
 	case "json":
-		return &JSONFormatter{w: os.Stdout}, nil
+		return &JSONFormatter{}, nil
 	case "otlp":
-		return &OTLPFormatter{cfg: cfg.OTLP}, nil
+		otlpCfg := cfg.OTLP
+		if otlpCfg == nil {
+			otlpCfg = &OTLPConfig{}
+		}
+		if err := otlpCfg.Validate(); err != nil {
+			return nil, err
+		}
+		return &OTLPFormatter{cfg: *otlpCfg}, nil
 	default:
-		return nil, fmt.Errorf("unknown output format %q: valid choices are: table, json, otlp", format)
+		return nil, fmt.Errorf("unknown output format %q: valid choices are: table, csv, json, otlp", format)
 	}
 }

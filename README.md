@@ -20,8 +20,8 @@ Scan open file descriptors across all running processes, filter by file path reg
 
 pherret provides two commands:
 
-- `list` — scan once and print all matches.
-- `watch` — scan continuously on an interval, printing only matches not already seen (see [Deduplication](#deduplication)).
+- `list` — scan once and print all matches. Supports the `table`, `csv`, `json`, and `otlp` output formats.
+- `watch` — scan continuously on an interval, printing only matches not already seen (see [Deduplication](#deduplication)). **Only the `otlp` format is supported**, since it's the only format designed to receive a continuous stream of events; the other formats always (re-)emit a full header/document per invocation, which doesn't make sense for a running, incremental process.
 
 **NOTE:** `watch` is not a "live" watch; it polls the system at a fixed interval,
 so there may be a delay between when a file is opened and when it is reported.
@@ -33,11 +33,15 @@ pherret list [flags]
 pherret watch [flags]
 
 Flags:
-  -r, --regex string        Regex to filter open file paths (default "/", i.e. match everything)
-  -f, --format string       Output format: table, json, otlp (default "table")
-  -s, --show-skipped        Print a note to stderr with the number of processes skipped due to permission or read errors
-  -i, --interval duration   (watch only) Polling interval between scans (default 2s)
-  -h, --help                help for the command
+  -r, --regex string             Regex to filter open file paths (default "/", i.e. match everything)
+  -f, --format string             Output format: table, csv, json, otlp (default "table"; watch requires otlp)
+  -s, --show-skipped              Print a note to stderr with the number of processes skipped due to permission or read errors
+  -i, --interval duration         (watch only) Polling interval between scans (default 2s)
+      --csv-file string            Path to a CSV file to write output to (default: stdout)
+      --csv-include-header         Include a header row in the CSV output (default true)
+  -h, --help                       help for the command
+
+(see the otlp section below for --otlp-* flags)
 ```
 
 ### Examples
@@ -49,8 +53,12 @@ pherret list -r '/var/log/.*'
 # Find SSH-related open files, output as JSON
 pherret list -r '/\.ssh/.*' -f json
 
-# Continuously watch for newly opened files in /tmp, checking every second
-pherret watch -r '/tmp/.*' -i 1s
+# Write matches to a CSV file without a header row
+pherret list -r '/var/log/.*' -f csv --csv-file matches.csv --csv-include-header=false
+
+# Continuously watch for newly opened files in /tmp, checking every second,
+# exporting each new match as an OTLP log record (watch only supports otlp)
+pherret watch -r '/tmp/.*' -i 1s -f otlp --otlp-endpoint localhost:4317
 ```
 
 ### Deduplication
@@ -93,7 +101,20 @@ xcode-select --install
 
 ### table / json
 
-The default `table` format and the `json` format require no additional configuration; they write to stdout.
+The default `table` format and the `json` format require no additional configuration; they write to stdout. Both are only available with `list` (see [Commands](#commands) for why `watch` is otlp-only).
+
+### csv
+
+The `csv` format writes matches as CSV, to stdout by default. It is only available with `list`.
+
+| Flag | Description |
+|---|---|
+| `--csv-file` | Path to a file to write CSV output to. If omitted, writes to stdout. |
+| `--csv-include-header` | Include a header row (`UID,USER,PID,FD,CWD,EXE,PATH`) in the output. Defaults to `true`. |
+
+```sh
+pherret list -r '/var/log/.*' -f csv --csv-file matches.csv
+```
 
 ### otlp
 

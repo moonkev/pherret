@@ -24,83 +24,54 @@ func hashMatch(m scan.Match) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-// otlpFlagSet holds the raw CLI flag values used to configure the OTLP
-// output formatter.
-type otlpFlagSet struct {
-	endpoint           string
-	protocol           string
-	urlPath            string
-	headers            []string
-	tls                bool
-	insecureSkipVerify bool
-	caCert             string
-	clientCert         string
-	clientKey          string
-}
-
 // addOTLPFlags registers the --otlp-* flags on cmd and returns the flag set
 // backing them.
-func addOTLPFlags(cmd *cobra.Command) *otlpFlagSet {
-	f := &otlpFlagSet{}
+func addOTLPFlags(cmd *cobra.Command) *output.OTLPConfig {
+	cfg := &output.OTLPConfig{}
 
-	cmd.Flags().StringVar(&f.endpoint, "otlp-endpoint", "",
+	cmd.Flags().StringVar(&cfg.Endpoint, "otlp-endpoint", "",
 		"OTLP collector endpoint host:port (required when --format=otlp)")
-	cmd.Flags().StringVar(&f.protocol, "otlp-protocol", "grpc",
+	cmd.Flags().StringVar(&cfg.Protocol, "otlp-protocol", "grpc",
 		"OTLP transport protocol: grpc or http")
-	cmd.Flags().StringVar(&f.urlPath, "otlp-url-path", "",
+	cmd.Flags().StringVar(&cfg.URLPath, "otlp-url-path", "",
 		"URL path for the OTLP http protocol, e.g. /v1/logs (http only)")
-	cmd.Flags().StringArrayVar(&f.headers, "otlp-header", nil,
+	cmd.Flags().StringArrayVar(&cfg.Headers, "otlp-header", nil,
 		"Additional OTLP request header/metadata as Key=Value (repeatable)")
-	cmd.Flags().BoolVar(&f.tls, "otlp-tls", false,
+	cmd.Flags().BoolVar(&cfg.TLS, "otlp-tls", false,
 		"Use TLS when connecting to the OTLP endpoint")
-	cmd.Flags().BoolVar(&f.insecureSkipVerify, "otlp-insecure-skip-verify", false,
+	cmd.Flags().BoolVar(&cfg.InsecureSkipVerify, "otlp-insecure-skip-verify", false,
 		"Skip TLS certificate verification for the OTLP endpoint (insecure, requires --otlp-tls)")
-	cmd.Flags().StringVar(&f.caCert, "otlp-ca-cert", "",
+	cmd.Flags().StringVar(&cfg.CACertFile, "otlp-ca-cert", "",
 		"Path to a PEM encoded CA certificate used to verify the OTLP server (requires --otlp-tls)")
-	cmd.Flags().StringVar(&f.clientCert, "otlp-client-cert", "",
+	cmd.Flags().StringVar(&cfg.ClientCertFile, "otlp-client-cert", "",
 		"Path to a PEM encoded client certificate for mTLS (requires --otlp-tls and --otlp-client-key)")
-	cmd.Flags().StringVar(&f.clientKey, "otlp-client-key", "",
+	cmd.Flags().StringVar(&cfg.ClientKeyFile, "otlp-client-key", "",
 		"Path to a PEM encoded client private key for mTLS (requires --otlp-tls and --otlp-client-cert)")
 
-	return f
+	return cfg
 }
 
-// toConfig converts the raw flag values into an output.Config, parsing
-// headers along the way.
-func (f *otlpFlagSet) toConfig() (output.Config, error) {
-	headers, err := output.ParseOTLPHeaders(f.headers)
-	if err != nil {
-		return output.Config{}, err
-	}
+// addCsvFlags registers the --csv-* flags on cmd and returns the flag set backing them.
+func addCsvFlags(cmd *cobra.Command) *output.CsvConfig {
+	cfg := &output.CsvConfig{}
 
-	return output.Config{
-		OTLP: output.OTLPConfig{
-			Endpoint:           f.endpoint,
-			Protocol:           f.protocol,
-			URLPath:            f.urlPath,
-			Headers:            headers,
-			TLS:                f.tls,
-			InsecureSkipVerify: f.insecureSkipVerify,
-			CACertFile:         f.caCert,
-			ClientCertFile:     f.clientCert,
-			ClientKeyFile:      f.clientKey,
-		},
-	}, nil
+	cmd.Flags().StringVar(&cfg.FilePath, "csv-file", "",
+		"Path to a CSV file to write output to (default: stdout)")
+	cmd.Flags().BoolVar(&cfg.IncludeHeader, "csv-include-header", true,
+		"Include a header row in the CSV output")
+
+	return cfg
 }
 
-// newFormatter builds the output.Formatter for format, resolving and
-// validating configuration from otlpFlags when needed.
-func newFormatter(format string, otlpFlags *otlpFlagSet) (output.Formatter, error) {
-	cfg, err := otlpFlags.toConfig()
-	if err != nil {
-		return nil, err
-	}
+// addFlags registers all output-related flags on cmd and returns a Config.
+func addFlags(cmd *cobra.Command) *output.Config {
+	otlpFlags := addOTLPFlags(cmd)
+	csvFlags := addCsvFlags(cmd)
 
-	if format == "otlp" && cfg.OTLP.Endpoint == "" {
-		return nil, fmt.Errorf("--otlp-endpoint is required when --format=otlp")
+	return &output.Config{
+		OTLP: otlpFlags,
+		CSV:  csvFlags,
 	}
-
-	return output.New(format, cfg)
 }
 
 var rootCmd = &cobra.Command{
@@ -118,15 +89,14 @@ func newListCmd() *cobra.Command {
 		Short: "List open file descriptors across processes and filter by file path regex.",
 	}
 
-	otlpFlags := addOTLPFlags(cmd)
-
+	cfg := addFlags(cmd)
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		re, err := regexp.Compile(regexStr)
 		if err != nil {
 			return fmt.Errorf("invalid regex: %w", err)
 		}
 
-		formatter, err := newFormatter(format, otlpFlags)
+		formatter, err := output.New(format, cfg)
 		if err != nil {
 			return err
 		}
@@ -137,7 +107,7 @@ func newListCmd() *cobra.Command {
 			return err
 		}
 
-		if err := formatter.Format(matches, true); err != nil {
+		if err := formatter.Format(matches); err != nil {
 			return err
 		}
 
@@ -162,22 +132,25 @@ func newWatchCmd() *cobra.Command {
 	var interval time.Duration
 	var showSkipped bool
 
-	firstScan := true
-
 	cmd := &cobra.Command{
 		Use:   "watch",
 		Short: "Continuously watch open file descriptors across processes and filter by file path regex.",
 	}
 
-	otlpFlags := addOTLPFlags(cmd)
+	cfg := addFlags(cmd)
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
+
+		if format != "otlp" {
+			return fmt.Errorf("the only supported format for watch is otlp, got: %s", format)
+		}
+
 		re, err := regexp.Compile(regexStr)
 		if err != nil {
 			return fmt.Errorf("invalid regex: %w", err)
 		}
 
-		formatter, err := newFormatter(format, otlpFlags)
+		formatter, err := output.New(format, cfg)
 		if err != nil {
 			return err
 		}
@@ -213,11 +186,8 @@ func newWatchCmd() *cobra.Command {
 			}
 
 			if len(newMatches) > 0 {
-				if err := formatter.Format(newMatches, firstScan); err != nil {
+				if err := formatter.Format(newMatches); err != nil {
 					return err
-				}
-				if firstScan {
-					firstScan = false
 				}
 			}
 
