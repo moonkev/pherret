@@ -12,10 +12,10 @@
 #   make cross      - build binaries for linux/amd64, linux/arm64, darwin/amd64, darwin/arm64
 #   make ci         - run the same steps as CI (build + test)
 
-BINARY      := pherret
 MODULE      := github.com/moonkev/pherret
 DIST        := dist
-GO          := go
+BINARY      ?= pherret
+GO          ?= go
 
 .PHONY: all
 all: build
@@ -72,12 +72,18 @@ PLATFORMS := linux/amd64 linux/arm64 darwin/amd64 darwin/arm64
 .PHONY: cross
 cross: clean
 	@mkdir -p $(DIST)
-	@for platform in $(PLATFORMS); do \
-		os=$$(echo $$platform | cut -d/ -f1); \
-		arch=$$(echo $$platform | cut -d/ -f2); \
-		out=$(DIST)/$(BINARY)-$$os-$$arch; \
-		echo "Building $$out..."; \
-		GOOS=$$os GOARCH=$$arch CGO_ENABLED=$$( [ "$$os" = "darwin" ] && echo 1 || echo 0 ) \
-			$(GO) build -o $$out . || echo "  skipped $$os/$$arch (cross-compilation not available)"; \
+	@host_os=$$(uname -s | tr '[:upper:]' '[:lower:]'); \
+	for platform in $(PLATFORMS); do \
+	   os=$$(echo $$platform | cut -d/ -f1); \
+	   arch=$$(echo $$platform | cut -d/ -f2); \
+	   out=$(DIST)/$(BINARY)-$$os-$$arch; \
+	   if [ "$$os" = "darwin" ] && [ "$$host_os" != "darwin" ]; then \
+	      echo "[skip] not building for $$os/$$arch - requires macOS with the appropriate cross toolchain"; \
+	      continue; \
+	   fi; \
+	   echo "Building $$out..."; \
+	   GOOS=$$os GOARCH=$$arch CGO_ENABLED=$$( [ "$$os" = "darwin" ] && echo 1 || echo 0 ) \
+	      $(GO) build -o $$out . || { echo "Build failed for $$os/$$arch"; exit 1; }; \
 	done
+
 
