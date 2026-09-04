@@ -13,12 +13,12 @@ var (
 	emptyMatches []scan.Match
 
 	singleMatch = []scan.Match{
-		{UID: 1000, User: "alice", PID: 42, FD: "3", CWD: "/home/alice", Exe: "/usr/bin/cat", Path: "/tmp/foo.txt"},
+		{UID: 1000, User: "alice", PID: 42, FD: "3", CWD: "/home/alice", Exe: "/usr/bin/cat", Path: "/tmp/foo.txt", Mode: "-rw-r--r--"},
 	}
 
 	multiMatches = []scan.Match{
-		{UID: 1000, User: "alice", PID: 42, FD: "3", CWD: "/home/alice", Exe: "/usr/bin/cat", Path: "/tmp/foo.txt"},
-		{UID: 0, User: "root", PID: 1, FD: "10", CWD: "/", Exe: "/sbin/init", Path: "/var/log/syslog"},
+		{UID: 1000, User: "alice", PID: 42, FD: "3", CWD: "/home/alice", Exe: "/usr/bin/cat", Path: "/tmp/foo.txt", Mode: "-rw-r--r--"},
+		{UID: 0, User: "root", PID: 1, FD: "10", CWD: "/", Exe: "/sbin/init", Path: "/var/log/syslog", Mode: "-rw-------"},
 	}
 )
 
@@ -75,7 +75,7 @@ func TestTableFormatter_Header(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	got := buf.String()
-	for _, col := range []string{"UID", "USER", "PID", "FD", "CWD", "EXE", "PATH"} {
+	for _, col := range []string{"UID", "USER", "PID", "FD", "CWD", "EXE", "PATH", "MODE"} {
 		if !strings.Contains(got, col) {
 			t.Errorf("table header missing column %q; output:\n%s", col, got)
 		}
@@ -90,7 +90,7 @@ func TestTableFormatter_SingleMatch(t *testing.T) {
 	}
 	got := buf.String()
 	m := singleMatch[0]
-	for _, want := range []string{m.User, m.CWD, m.Exe, m.Path, m.FD} {
+	for _, want := range []string{m.User, m.CWD, m.Exe, m.Path, m.FD, m.Mode} {
 		if !strings.Contains(got, want) {
 			t.Errorf("table output missing %q; output:\n%s", want, got)
 		}
@@ -107,6 +107,9 @@ func TestTableFormatter_MultipleMatches(t *testing.T) {
 	for _, m := range multiMatches {
 		if !strings.Contains(got, m.Path) {
 			t.Errorf("expected match %q in output;\noutput:\n%s", m.Path, got)
+		}
+		if !strings.Contains(got, m.Mode) {
+			t.Errorf("expected mode %q in output;\noutput:\n%s", m.Mode, got)
 		}
 	}
 }
@@ -144,7 +147,7 @@ func TestJSONFormatter_SingleMatch(t *testing.T) {
 	m := got[0]
 	want := singleMatch[0]
 	if m.UID != want.UID || m.User != want.User || m.PID != want.PID ||
-		m.FD != want.FD || m.CWD != want.CWD || m.Exe != want.Exe || m.Path != want.Path {
+		m.FD != want.FD || m.CWD != want.CWD || m.Exe != want.Exe || m.Path != want.Path || m.Mode != want.Mode {
 		t.Errorf("match mismatch:\nwant %+v\ngot  %+v", want, m)
 	}
 }

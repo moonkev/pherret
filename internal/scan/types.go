@@ -15,6 +15,7 @@ type Match struct {
 	Exe  string `json:"exe"`
 	FD   string `json:"fd"`
 	Path string `json:"path"`
+	Mode string `json:"mode"`
 }
 
 type Scanner interface {

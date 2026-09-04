@@ -171,6 +171,7 @@ func (f *OTLPFormatter) Format(matches []scan.Match) (err error) {
 			"cwd", match.CWD,
 			"exe", match.Exe,
 			"path", match.Path,
+			"mode", match.Mode,
 		)
 	}
 

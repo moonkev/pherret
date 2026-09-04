@@ -35,7 +35,7 @@ func (f *CsvFormatter) Format(matches []scan.Match) (err error) {
 	csvWriter := csv.NewWriter(writer)
 	defer csvWriter.Flush()
 	if f.cfg.IncludeHeader {
-		if err = csvWriter.Write([]string{"UID", "USER", "PID", "FD", "CWD", "EXE", "PATH"}); err != nil {
+		if err = csvWriter.Write([]string{"UID", "USER", "PID", "FD", "CWD", "EXE", "PATH", "MODE"}); err != nil {
 			return err
 		}
 	}
@@ -50,6 +50,7 @@ func (f *CsvFormatter) Format(matches []scan.Match) (err error) {
 			m.CWD,
 			m.Exe,
 			m.Path,
+			m.Mode,
 		}
 	}
 

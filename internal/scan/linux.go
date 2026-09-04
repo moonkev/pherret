@@ -63,6 +63,11 @@ func (s *linuxProcScanner) Scan(re *regexp.Regexp) ([]Match, int, error) {
 			if !re.MatchString(target) {
 				continue
 			}
+			fileInfo, err := os.Stat(target)
+			mode := "<unavailable>"
+			if err == nil {
+				mode = fileInfo.Mode().String()
+			}
 
 			out = append(out, Match{
 				UID:  uid,
@@ -72,6 +77,7 @@ func (s *linuxProcScanner) Scan(re *regexp.Regexp) ([]Match, int, error) {
 				Exe:  exe,
 				FD:   fdEntry.Name(),
 				Path: target,
+				Mode: mode,
 			})
 		}
 	}
@@ -95,7 +101,7 @@ func parseUIDFromStatus(data []byte) (uint32, error) {
 		if bytes.HasPrefix(line, []byte("Uid:")) {
 			fields := strings.Fields(string(line))
 			if len(fields) < 2 {
-				return 0, errors.New("malformed Uid line")
+				return 0, errors.New("malformed UID line")
 			}
 			n, err := strconv.ParseUint(fields[1], 10, 32)
 			if err != nil {
@@ -104,7 +110,7 @@ func parseUIDFromStatus(data []byte) (uint32, error) {
 			return uint32(n), nil
 		}
 	}
-	return 0, errors.New("Uid line not found")
+	return 0, errors.New("UID line not found")
 }
 
 func readLinkOrUnknown(path string) string {

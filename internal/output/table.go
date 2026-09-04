@@ -32,10 +32,10 @@ func (f *TableFormatter) Format(matches []scan.Match) (err error) {
 		err = table.Close()
 	}(table)
 
-	table.Header("UID", "USER", "PID", "FD", "CWD", "EXE", "PATH")
+	table.Header("UID", "USER", "PID", "FD", "CWD", "EXE", "PATH", "MODE")
 	tableData := make([][]any, len(matches))
 	for i, m := range matches {
-		tableData[i] = []any{m.UID, m.User, m.PID, m.FD, m.CWD, m.Exe, m.Path}
+		tableData[i] = []any{m.UID, m.User, m.PID, m.FD, m.CWD, m.Exe, m.Path, m.Mode}
 	}
 	if err = table.Bulk(tableData); err != nil {
 		return err

@@ -15,6 +15,7 @@ Scan open file descriptors across all running processes, filter by file path reg
 | `EXE` | Process executable path |
 | `FD` | File descriptor number |
 | `PATH` | Matched open file path |
+| `MODE` | File mode/permissions of the matched path (e.g. `-rw-r--r--`), or `<unavailable>` if it could not be determined |
 
 ## Commands
 
@@ -110,7 +111,7 @@ The `csv` format writes matches as CSV, to stdout by default. It is only availab
 | Flag | Description |
 |---|---|
 | `--csv-file` | Path to a file to write CSV output to. If omitted, writes to stdout. |
-| `--csv-include-header` | Include a header row (`UID,USER,PID,FD,CWD,EXE,PATH`) in the output. Defaults to `true`. |
+| `--csv-include-header` | Include a header row (`UID,USER,PID,FD,CWD,EXE,PATH,MODE`) in the output. Defaults to `true`. |
 
 ```sh
 pherret list -r '/var/log/.*' -f csv --csv-file matches.csv
